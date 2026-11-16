@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# InsightFace / ONNX (modelos pré-treinados baixados localmente)
+.insightface/
+~/.insightface/
+models/
+*.onnx
+
+# Resultados gerados (não versionar embeddings nem imagens pessoais)
+results/*.json
+results/*.png
+results/*.jpg
+results/*.jpeg
+*.npy
+*.npz
+
+# Imagens pessoais e dados locais
+data/train/**
+data/validation/**
+data/test/**
+data/gallery/**
+!data/train/.gitkeep
+!data/validation/.gitkeep
+!data/test/.gitkeep
+!data/gallery/.gitkeep
+results/gallery.npz
+
+# Sistema
+.DS_Store
+Thumbs.db
