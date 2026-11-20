@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.evaluation import IdentificationResult
-from src.models import FaceDetection
+# from src.models import FaceDetection
+from src.models_auraface import FaceDetection
 
 
 def _bgr_to_rgb(image: np.ndarray) -> np.ndarray:

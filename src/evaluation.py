@@ -1,4 +1,10 @@
-"""Comparação de embeddings faciais por similaridade de cosseno."""
+"""Comparação de embeddings faciais por similaridade de cosseno.
+
+Ajustado para AuraFace (512-D, espaço ArcFace).
+O threshold abaixo é PROVISÓRIO — deve ser recalibrado com uma base
+de validação própria. Referência: EER do AuraFace no LFW ≈ 1.37%,
+mas o valor ideal depende do seu domínio e do tamanho da galeria.
+"""
 
 from __future__ import annotations
 
@@ -8,9 +14,8 @@ import numpy as np
 
 from src.gallery import GalleryRecord
 
-# Threshold provisório, comum em demos do InsightFace/ArcFace.
-# Deve ser calibrado depois com uma base de validação; não é um valor científico deste TCC.
-DEFAULT_THRESHOLD = 0.5
+# Threshold provisório para AuraFace. Recalibrar com dados próprios.
+DEFAULT_THRESHOLD = 0.45
 
 
 @dataclass
@@ -38,7 +43,7 @@ class IdentificationResult:
 
 
 class FaceComparator:
-    """Compara dois embeddings ArcFace pela similaridade de cosseno."""
+    """Compara dois embeddings AuraFace pela similaridade de cosseno."""
 
     def __init__(self, threshold: float = DEFAULT_THRESHOLD) -> None:
         self.threshold = float(threshold)

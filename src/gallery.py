@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.models import ArcFaceExtractor, FaceDetection
+from src.models_auraface import AuraFaceExtractor, FaceDetection
 from src.preprocessing import ImageLoadError, load_image
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -41,7 +41,7 @@ class FaceGallery:
     def enroll(
         cls,
         gallery_dir: str | Path,
-        extractor: ArcFaceExtractor,
+        extractor: AuraFaceExtractor,
     ) -> tuple[FaceGallery, EnrollReport]:
         root = Path(gallery_dir)
         if not root.exists() or not root.is_dir():
@@ -77,7 +77,10 @@ class FaceGallery:
                     continue
 
                 if not detections:
-                    skipped.append(f"{image_path}: nenhum rosto detectado")
+                    skipped.append(
+                        f"{image_path}: nenhum rosto válido detectado "
+                        "(ou alinhamento falhou)"
+                    )
                     continue
                 if len(detections) > 1:
                     skipped.append(

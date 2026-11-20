@@ -1,4 +1,5 @@
-"""Cadastro da galeria e identificação 1:N com ArcFace."""
+# """Cadastro da galeria e identificação 1:N com ArcFace."""
+"""Cadastro da galeria e identificação 1:N com AuraFace + YuNet."""
 
 from __future__ import annotations
 
@@ -9,7 +10,8 @@ from pathlib import Path
 
 from src.evaluation import DEFAULT_THRESHOLD, FaceComparator
 from src.gallery import FaceGallery
-from src.models import ArcFaceExtractor, FaceDetection
+# from src.models import ArcFaceExtractor, FaceDetection
+from src.models_auraface import AuraFaceExtractor, FaceDetection
 from src.preprocessing import ImageLoadError, load_image
 from src.visualization import save_identification_figure
 
@@ -23,7 +25,8 @@ DEFAULT_FIGURE_PATH = RESULTS_DIR / "identification.png"
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Identificação facial 1:N com ArcFace (InsightFace buffalo_l). "
+            # "Identificação facial 1:N com ArcFace (InsightFace buffalo_l). "
+            "Identificação facial 1:N com AuraFace (fal.ai) + YuNet (OpenCV). "
             "Cadastre uma galeria e consulte com uma imagem."
         )
     )
@@ -125,13 +128,15 @@ def select_face(
 
 def run_enroll(
     argv: list[str] | None = None,
-    extractor: ArcFaceExtractor | None = None,
+    # extractor: ArcFaceExtractor | None = None,
+    extractor: AuraFaceExtractor | None = None,
 ) -> dict:
     args = parse_args(argv if argv is not None else ["enroll"])
     if args.command != "enroll":
         raise ValueError("Comando esperado: enroll")
 
-    extractor = extractor or ArcFaceExtractor()
+    # extractor = extractor or ArcFaceExtractor()
+    extractor = extractor or AuraFaceExtractor()
     gallery, report = FaceGallery.enroll(args.gallery, extractor)
     if not gallery.records:
         raise ValueError(
@@ -158,7 +163,8 @@ def run_enroll(
 
 def _load_gallery_for_identify(
     args: argparse.Namespace,
-    extractor: ArcFaceExtractor,
+    # extractor: ArcFaceExtractor,
+    extractor: AuraFaceExtractor,
 ) -> FaceGallery:
     if args.index:
         return FaceGallery.load(args.index)
@@ -174,7 +180,8 @@ def _load_gallery_for_identify(
 
 def run_identify(
     argv: list[str] | None = None,
-    extractor: ArcFaceExtractor | None = None,
+    # extractor: ArcFaceExtractor | None = None,
+    extractor: AuraFaceExtractor | None = None,
 ) -> dict:
     args = parse_args(argv if argv is not None else None)
     if args.command != "identify":
@@ -182,7 +189,8 @@ def run_identify(
     if args.index is None and args.gallery is None:
         args.gallery = str(DEFAULT_GALLERY_DIR)
 
-    extractor = extractor or ArcFaceExtractor()
+    # extractor = extractor or ArcFaceExtractor()
+    extractor = extractor or AuraFaceExtractor()
     query_image = load_image(args.image)
     query_detections = extractor.extract(query_image)
     print(f"Consulta: {len(query_detections)} rosto(s) detectado(s).")
@@ -259,7 +267,8 @@ def run_identify(
 
 def run(
     argv: list[str] | None = None,
-    extractor: ArcFaceExtractor | None = None,
+    # extractor: ArcFaceExtractor | None = None,
+    extractor: AuraFaceExtractor | None = None,
 ) -> dict:
     args = parse_args(argv)
     if args.command == "enroll":
