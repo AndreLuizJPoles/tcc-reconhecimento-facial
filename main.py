@@ -1,4 +1,4 @@
-"""Ponto de entrada na raiz. Prefira: python -m src.main enroll|identify"""
+"""Ponto de entrada na raiz. Prefira: python -m src.main <comando>"""
 
 from src.main import main
 
