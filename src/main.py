@@ -256,7 +256,7 @@ def run_enroll(
     argv: list[str] | None = None,
     extractor: FaceEmbedder | None = None,
 ) -> dict:
-    args = parse_args(argv if argv is not None else ["enroll"])
+    args = parse_args(argv)
     if args.command != "enroll":
         raise ValueError("Comando esperado: enroll")
 
@@ -393,7 +393,7 @@ def run_identify(
 
 
 def run_prepare_lfw(argv: list[str] | None = None) -> dict:
-    args = parse_args(argv if argv is not None else ["prepare-lfw"])
+    args = parse_args(argv)
     if args.command != "prepare-lfw":
         raise ValueError("Comando esperado: prepare-lfw")
 
@@ -430,7 +430,7 @@ def run_train_adapter(
     argv: list[str] | None = None,
     extractor: FaceEmbedder | None = None,
 ) -> dict:
-    args = parse_args(argv if argv is not None else ["train-adapter"])
+    args = parse_args(argv)
     if args.command != "train-adapter":
         raise ValueError("Comando esperado: train-adapter")
 
@@ -485,7 +485,7 @@ def run_evaluate(
     argv: list[str] | None = None,
     extractor: FaceEmbedder | None = None,
 ) -> dict:
-    args = parse_args(argv if argv is not None else ["evaluate"])
+    args = parse_args(argv)
     if args.command != "evaluate":
         raise ValueError("Comando esperado: evaluate")
 

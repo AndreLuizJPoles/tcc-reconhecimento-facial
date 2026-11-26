@@ -207,3 +207,48 @@ def test_train_adapter_and_evaluate_with_mocks(tmp_path) -> None:
     assert eval_payload["n_queries"] >= 1
     assert (tmp_path / "metrics.csv").exists()
     assert (tmp_path / "summary.json").exists()
+
+
+def test_run_evaluate_preserves_sys_argv_flags(tmp_path, monkeypatch) -> None:
+    import sys
+
+    root = tmp_path / "lfw"
+    splits_path = _tiny_splits(root)
+    metrics_csv = tmp_path / "metrics.csv"
+    summary_json = tmp_path / "summary.json"
+    detail_csv = tmp_path / "detail.csv"
+
+    app = MagicMock()
+    app.get.side_effect = [
+        [_face(np.array([0.0, 0.0, 1.0], dtype=np.float32))],
+        [_face(np.array([0.0, 0.0, 1.0], dtype=np.float32))],
+        [_face(np.array([0.0, 0.0, 1.0], dtype=np.float32))],
+        [_face(np.array([0.7, 0.7, 0.0], dtype=np.float32))],
+    ]
+    extractor = ArcFaceExtractor(app=app)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "src.main",
+            "evaluate",
+            "--splits",
+            str(splits_path),
+            "--adapter",
+            "results/adapters/arcface_linear.pt",
+            "--threshold",
+            "0.5",
+            "--metrics-csv",
+            str(metrics_csv),
+            "--output-json",
+            str(summary_json),
+            "--output-detail-csv",
+            str(detail_csv),
+        ],
+    )
+    payload = run(None, extractor=extractor)
+    assert payload["mode"] == "adapter"
+    assert payload["adapter"] == "results/adapters/arcface_linear.pt"
+    assert payload["threshold"] == 0.5
+
