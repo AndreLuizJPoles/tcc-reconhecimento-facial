@@ -1,17 +1,21 @@
-"""Extração de embeddings faciais com ArcFace (InsightFace buffalo_l)."""
+"""Tipos compartilhados e factory de extratores faciais."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from src.preprocessing import validate_image_array
+if TYPE_CHECKING:
+    from src.embedders.base import FaceEmbedder
 
 
 @dataclass
 class FaceDetection:
+    """Uma face detectada: embedding L2, bbox (ROI) e score do detector."""
+
     embedding: np.ndarray
     bbox: np.ndarray
     det_score: float
@@ -27,47 +31,72 @@ def l2_normalize(vector: np.ndarray) -> np.ndarray:
     return embedding / norm
 
 
-class ArcFaceExtractor:
-    """Carrega buffalo_l uma vez e extrai embeddings ArcFace alinhados pelo pipeline."""
+SUPPORTED_MODELS = ("arcface", "cosface", "auraface")
+IMPLEMENTED_MODELS = ("arcface",)
 
-    def __init__(
-        self,
-        model_name: str = "buffalo_l",
-        ctx_id: int = -1,
-        det_size: tuple[int, int] = (640, 640),
-        app: Any | None = None,
-    ) -> None:
-        if app is not None:
-            self._app = app
-            return
 
-        from insightface.app import FaceAnalysis
+def get_embedder(
+    model_name: str = "arcface",
+    adapter: str | Path | None = None,
+    ctx_id: int = -1,
+    det_size: tuple[int, int] = (640, 640),
+    app: Any | None = None,
+    **kwargs: Any,
+) -> FaceEmbedder:
+    """Factory de extratores. Só ArcFace está implementado de fato.
 
-        self._app = FaceAnalysis(name=model_name)
-        self._app.prepare(ctx_id=ctx_id, det_size=det_size)
+    adapter:
+      - None / "none" / "" → buffalo_l puro
+      - caminho .pt → AdaptedArcFaceExtractor com LinearAdapter
+    """
+    from src.embedders.arcface import ArcFaceExtractor
 
-    def extract(self, image: np.ndarray) -> list[FaceDetection]:
-        validated = validate_image_array(image)
-        faces = self._app.get(validated)
-        detections: list[FaceDetection] = []
+    name = (model_name or "arcface").strip().lower()
+    adapter_arg = None if adapter in (None, "", "none") else Path(adapter)
 
-        for face in faces or []:
-            detections.append(
-                FaceDetection(
-                    embedding=self._normalized_embedding(face),
-                    bbox=np.asarray(face.bbox, dtype=np.float32),
-                    det_score=float(getattr(face, "det_score", 0.0)),
-                )
-            )
+    if name == "cosface":
+        from src.embedders.stubs import CosFaceExtractor
 
-        return detections
+        return CosFaceExtractor(ctx_id=ctx_id, det_size=det_size, **kwargs)
 
-    def _normalized_embedding(self, face: object) -> np.ndarray:
-        normed = getattr(face, "normed_embedding", None)
-        if normed is not None:
-            return l2_normalize(normed)
+    if name == "auraface":
+        from src.embedders.stubs import AuraFaceExtractor
 
-        embedding = getattr(face, "embedding", None)
-        if embedding is None:
-            raise ValueError("A detecção não contém embedding facial.")
-        return l2_normalize(embedding)
+        return AuraFaceExtractor(ctx_id=ctx_id, det_size=det_size, **kwargs)
+
+    if name != "arcface":
+        raise ValueError(
+            f"Modelo desconhecido: {model_name!r}. "
+            f"Suportados: {', '.join(SUPPORTED_MODELS)} "
+            f"(implementado: {', '.join(IMPLEMENTED_MODELS)})."
+        )
+
+    buffalo_name = kwargs.pop("buffalo_name", "buffalo_l")
+    base = ArcFaceExtractor(
+        model_name=buffalo_name,
+        ctx_id=ctx_id,
+        det_size=det_size,
+        app=app,
+        **kwargs,
+    )
+    if adapter_arg is None:
+        return base
+
+    from src.embedders.adapted import AdaptedArcFaceExtractor
+    from src.finetuning import load_adapter
+
+    linear_adapter = load_adapter(adapter_arg)
+    return AdaptedArcFaceExtractor(base=base, adapter=linear_adapter)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy exports para evitar import circular com src.embedders.*."""
+    if name == "ArcFaceExtractor":
+        from src.embedders.arcface import ArcFaceExtractor
+
+        return ArcFaceExtractor
+    if name == "FaceEmbedder":
+        from src.embedders.base import FaceEmbedder
+
+        return FaceEmbedder
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

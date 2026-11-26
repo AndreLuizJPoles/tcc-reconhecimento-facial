@@ -7,7 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from src.models import ArcFaceExtractor, FaceDetection
+from src.embedders.base import FaceEmbedder
+from src.models import FaceDetection
 from src.preprocessing import ImageLoadError, load_image
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -41,7 +42,7 @@ class FaceGallery:
     def enroll(
         cls,
         gallery_dir: str | Path,
-        extractor: ArcFaceExtractor,
+        extractor: FaceEmbedder,
     ) -> tuple[FaceGallery, EnrollReport]:
         root = Path(gallery_dir)
         if not root.exists() or not root.is_dir():
