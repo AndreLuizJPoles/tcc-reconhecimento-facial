@@ -1,42 +1,67 @@
 # Reconhecimento facial com ArcFace
 
-Implementação do pipeline de **ArcFace** para o TCC de reconhecimento facial. O código usa o modelo pré-treinado `buffalo_l` do InsightFace, em CPU, só para inferência. O fluxo é **identificação 1:N**: uma imagem de consulta é comparada com uma galeria de identidades e pode resultar em match ou em **não encontrado**.
+Pipeline de **ArcFace** para o TCC: cadastro 1:N, dataset LFW, avaliação e um adaptador leve em cima do `buffalo_l` congelado. CosFace e AuraFace existem só como placeholder na factory; a implementação real nesta etapa é ArcFace.
 
-Não há treino, fine-tuning nem outros métodos (CosFace, FaceNet, RF-DETR).
+Hardware de referência do grupo: Ryzen 5700G + RTX 4060 (o adaptador usa CUDA se estiver disponível, senão CPU).
 
 ## O que é ArcFace
 
-ArcFace (Additive Angular Margin Loss) é uma função de perda para reconhecimento facial proposta por Deng, Guo, Xue e Zafeiriou (CVPR 2019). A ideia é mapear cada rosto para um vetor em uma hiperesfera e separar identidades pelo ângulo entre esses vetores.
+ArcFace (Additive Angular Margin Loss) mapeia cada rosto para um vetor numa hiperesfera e separa identidades pelo ângulo. Artigo: [ArcFace (CVPR 2019)](https://openaccess.thecvf.com/content_CVPR_2019/html/Deng_J_ArcFace_Additive_Angular_Margin_Loss_for_Deep_Face_Recognition_CVPR_2019_paper.html).
 
-O artigo original está em: [ArcFace: Additive Angular Margin Loss for Deep Face Recognition](https://openaccess.thecvf.com/content_CVPR_2019/html/Deng_ArcFace_Additive_Angular_Margin_Loss_for_Deep_Face_Recognition_CVPR_2019_paper.html).
+Neste projeto o backbone já vem treinado (`buffalo_l` / InsightFace). Nós não retreinamos o iResNet: o ONNX fica congelado.
 
-## Embeddings faciais
+## ROI, detecção e embedding
 
-Um embedding facial é um vetor numérico de dimensão fixa (no `buffalo_l`, 512) que resume a identidade da face depois da detecção e do alinhamento. Faces da mesma pessoa tendem a ficar próximas nesse espaço. Faces de pessoas diferentes tendem a ficar mais afastadas. Neste projeto os vetores são normalizados em L2 antes da comparação.
+Fluxo por imagem:
 
-## ArcFace Loss
+1. Detector do InsightFace acha a face (bbox = ROI)
+2. Alinhamento pelos landmarks
+3. Embedding ArcFace 512-D, normalizado em L2
 
-A perda parte do cosseno entre o embedding e o peso da classe, interpreta esse valor como um ângulo e soma uma margem angular `m` no ângulo da classe correta. Em seguida aplica uma escala `s`. Isso aperta a decisão no espaço angular e costuma melhorar a separação entre identidades em relação a perdas softmax comuns. Esta entrega **não treina** essa perda: só usa um modelo já treinado com ela.
+Cadastro, identificação e avaliação usam sempre essa face alinhada, não a foto inteira “crua”.
 
-## Similaridade de cosseno e busca 1:N
+## Interface multi-modelo
 
-A comparação entre dois embeddings `a` e `b` é:
+`FaceEmbedder` é o contrato comum (`extract(image) -> list[FaceDetection]`). A factory `get_embedder(--model, --adapter)` devolve:
 
-`cos(a, b) = (a · b) / (||a|| ||b||)`
+| Modelo | Status |
+|--------|--------|
+| `arcface` | Implementado (`buffalo_l`) |
+| `arcface` + `--adapter caminho.pt` | ArcFace + `LinearAdapter` |
+| `cosface` / `auraface` | Stub (`NotImplementedError`) |
 
-Na identificação, a consulta é comparada com **todas** as fotos da galeria. Para cada identidade, fica o **maior** score entre as fotos dela. Se o melhor score for `>= threshold`, o sistema devolve essa identidade. Caso contrário, o resultado é **não encontrado** (cenário open-set: a pessoa pode não estar na base).
+`enroll` e `identify` aceitam `--model` e `--adapter` e continuam funcionando com galeria local.
 
-O limiar padrão `0.5` é provisório. Ele precisa ser calibrado depois com uma base de validação.
+## Adaptador leve
 
-## Modelo pré-treinado `buffalo_l`
+O `buffalo_l` é ONNX: não dá para fazer fine-tuning completo do backbone aqui. Em vez disso:
 
-O pack [buffalo_l](https://github.com/deepinsight/insightface/tree/master/python-package#model-zoo) do [InsightFace](https://github.com/deepinsight/insightface) inclui detector (SCRFD) e reconhecedor ArcFace (ResNet-50) em ONNX. O pipeline do pacote Python detecta o rosto, alinha pelos pontos faciais e devolve o embedding.
+1. Extrai embeddings congelados no split de treino do LFW
+2. Treina `LinearAdapter` (linear 512→512 + L2) com **cross-entropy** nas identidades
+3. Na inferência, o mesmo detector/alinhamento roda e o vetor passa pela projeção
 
-Na primeira execução o InsightFace baixa os pesos para o cache local. Isso exige internet. Os arquivos de modelo não devem ir para o GitHub.
+Checkpoint padrão: `results/adapters/arcface_linear.pt` (gitignored). O backbone já é ArcFace; o adaptador só especializa o espaço ao subconjunto LFW de treino.
+
+## Dataset LFW
+
+Usamos o [LFW](http://vis-www.cs.umass.edu/lfw/) (Labeled Faces in the Wild) para avaliação acadêmica. As imagens **não** entram no Git.
+
+`prepare-lfw` baixa o LFW (primeiro pelo mirror Figshare do scikit-learn; o site da UMass costuma falhar em DNS), monta `data/lfw/raw/`, gera `data/lfw/splits.json` (train/val/test sem leak de identidade) e um layout `gallery/` + `query/` do split de teste. Identidades com poucas fotos entram como open-set (só query).
+
+Se o download automático falhar:
+
+```bash
+# Baixe https://ndownloader.figshare.com/files/5976018 e salve como data/lfw/lfw.tgz
+python -m src.main prepare-lfw
+# ou
+python -m src.main prepare-lfw --archive caminho/lfw.tgz
+```
+
+Licença/uso: o LFW é distribuição acadêmica de faces publicamente disponíveis; use só para pesquisa e não versione o dataset.
 
 ## Instalação
 
-Python 3.10 ou superior. No diretório do projeto:
+Python 3.10+. No diretório do projeto:
 
 ```bash
 python -m venv .venv
@@ -44,103 +69,68 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Dependências: InsightFace, ONNX Runtime (CPU), OpenCV, NumPy, Matplotlib e Pytest.
+Dependências principais: InsightFace, ONNX Runtime, OpenCV, NumPy, Matplotlib, PyTorch, scikit-learn, tqdm, Pytest. GPU é opcional (CUDA do PyTorch na máquina com RTX 4060).
 
-## Como montar a galeria
-
-Organize as fotos por identidade:
+## Galeria local (enroll / identify)
 
 ```text
 data/gallery/joao/foto1.jpg
-data/gallery/joao/foto2.jpg
 data/gallery/maria/foto1.jpg
 ```
 
-Regras do cadastro:
-
-- Nome da pasta = identidade
-- Preferir uma face por foto; se a imagem tiver vários rostos, ela é ignorada
-- Imagem sem rosto: aviso e pulo
-- Use só imagens com autorização; não versione fotos pessoais
-
-## Como executar
-
-### 1. Cadastrar a galeria
-
 ```bash
 python -m src.main enroll --gallery data/gallery --output results/gallery.npz
-```
-
-### 2. Identificar uma imagem
-
-Com o índice já gerado:
-
-```bash
 python -m src.main identify --image caminho/consulta.jpg --index results/gallery.npz
 ```
 
-Ou montando a galeria na hora:
+Com modelo/adaptador:
 
 ```bash
-python -m src.main identify --image caminho/consulta.jpg --gallery data/gallery
+python -m src.main enroll --model arcface --adapter none --gallery data/gallery
+python -m src.main identify --model arcface --adapter results/adapters/arcface_linear.pt --image consulta.jpg --index results/gallery.npz
 ```
 
-Se a consulta tiver mais de um rosto:
+Equivalente: `python main.py ...`.
+
+## LFW, treino do adaptador e avaliação
 
 ```bash
-python -m src.main identify --image caminho/consulta.jpg --index results/gallery.npz --face-index 0
+python -m src.main prepare-lfw
+python -m src.main train-adapter --device cuda
+python -m src.main evaluate --model arcface --adapter none
+python -m src.main evaluate --model arcface --adapter results/adapters/arcface_linear.pt
 ```
 
-Opções úteis:
+O `evaluate` calibra o threshold na **validação** (maximiza F1) e fixa esse valor no **teste**. Saídas (sem embeddings):
 
-- `--threshold 0.5` limiar provisório de cosseno
-- `--top-k 5` candidatos no ranking do JSON
-- `--output-json results/identification.json`
-- `--output-figure results/identification.png`
+- `results/metrics.csv` (resumo acumulado baseline vs adapter)
+- `results/evaluation_summary.json`
+- `results/evaluation_detail.csv` (por query)
 
-Equivalente pela raiz: `python main.py enroll ...` / `python main.py identify ...`.
+Métricas: identification rate, closed-set accuracy, open-set rejection, rank-1, precision/recall/F1, matriz TP/FP/TN/FN, latência média de extract e de identify 1:N.
 
-## Como interpretar o resultado
-
-O terminal mostra quantos rostos foram encontrados na consulta, a melhor similaridade e se houve match. O JSON traz:
-
-- `matched` (`true` / `false`)
-- `identity` (string ou `null` se não encontrado)
-- `similarity` da melhor candidata
-- `threshold`
-- `best_gallery_image`
-- `candidates` (ranking com identidade e similaridade, sem embeddings)
-
-`matched = false` é resultado válido: a pessoa pode não estar na base, ou a similaridade ficou abaixo do limiar.
-
-A figura mostra a consulta. Em caso de match, também mostra a melhor foto da galeria.
+Se a máquina não tiver rede no CI, `prepare-lfw` não roda lá: os testes unitários usam pastas temporárias e mocks, sem baixar LFW nem `buffalo_l`.
 
 ## Como testar
-
-Os testes unitários mockam o InsightFace e **não** baixam `buffalo_l`:
 
 ```bash
 pip install -r requirements.txt
 pytest
 ```
 
-Cobertura principal: cosseno, threshold, galeria por pastas, ranking 1:N, rejeição abaixo do limiar, imagem sem rostos, enroll/identify via CLI.
+Cobertura: factory/protocolo, adaptador 512→512 + L2, métricas sintéticas, prepare-lfw em filesystem fake, train/evaluate com extractor mockado, enroll/identify.
 
-Para um teste real com o modelo, cadastre fotos locais em `data/gallery` e rode `enroll` + `identify`. Na primeira vez o pack `buffalo_l` será baixado.
+## Limitações
 
-## Limitações desta etapa
-
-- Threshold `0.5` não foi calibrado; não há métricas experimentais neste README.
-- Sem treino e sem fine-tuning.
-- Execução inicial em CPU.
-- A qualidade do embedding depende da detecção e do alinhamento do `buffalo_l`.
-- Fotos da galeria com vários rostos são ignoradas no cadastro.
-- O índice `results/gallery.npz` contém embeddings e não deve ir para o GitHub.
-
-O arquivo `src/finetuning.py` existe só como reserva para uma etapa futura.
+- Só ArcFace está implementado; CosFace/AuraFace ficam para o grupo
+- Adaptador leve, não treino full iresnet50
+- LFW + subconjunto: precisa de download local (não versionado)
+- Threshold do `identify` manual continua podendo ser passado na mão; no `evaluate` ele vem da val
+- Qualidade depende da detecção/alinhamento do `buffalo_l`
+- Índice `results/gallery.npz` e checkpoints do adaptador não devem ir para o GitHub
 
 ## Referências
 
-- Deng, J., Guo, J., Xue, N., & Zafeiriou, S. (2019). ArcFace: Additive Angular Margin Loss for Deep Face Recognition. *CVPR*. https://openaccess.thecvf.com/content_CVPR_2019/html/Deng_ArcFace_Additive_Angular_Margin_Loss_for_Deep_Face_Recognition_CVPR_2019_paper.html
-- InsightFace (código e pacote Python): https://github.com/deepinsight/insightface
-- Model Zoo / `buffalo_l`: https://github.com/deepinsight/insightface/tree/master/python-package
+- Deng, J., Guo, J., Xue, N., & Zafeiriou, S. (2019). ArcFace: Additive Angular Margin Loss for Deep Face Recognition. *CVPR*.
+- InsightFace: https://github.com/deepinsight/insightface
+- LFW: http://vis-www.cs.umass.edu/lfw/
